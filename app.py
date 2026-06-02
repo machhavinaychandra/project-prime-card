@@ -1,5 +1,6 @@
-
-from flask import Flask, render_template_string, request, send_file
+from flask import Flask, render_template_string, request, send_file, after_this_request
+import tempfile
+import shutil
 from PIL import Image, ImageOps
 import os
 import math
@@ -11,7 +12,7 @@ app = Flask(__name__)
 generated_files = {}
 
 # =========================================================
-# HTML UI
+# HTML UI temp_folder
 # =========================================================
 
 HTML = """
@@ -755,15 +756,7 @@ def home():
 
             unique_id = str(uuid.uuid4())
 
-            temp_folder = os.path.join(
-                os.getcwd(),
-                f"temp_{unique_id}"
-            )
-
-            os.makedirs(
-                temp_folder,
-                exist_ok=True
-            )
+            temp_folder = tempfile.mkdtemp()
 
             extract_folder = os.path.join(
                 temp_folder,
@@ -776,7 +769,7 @@ def home():
             )
 
             # =====================================================
-            # EXTRACT ZIP FILES
+            # EXTRACT ZIP FILES dpi
             # =====================================================
 
             for index, uploaded_file in enumerate(
@@ -942,7 +935,7 @@ def home():
 # PAGE SETTINGS
 # =====================================================
 
-            DPI = 300
+            DPI = 150
 
             PAGE_WIDTH_INCH = 19
             PAGE_HEIGHT_INCH = 13
@@ -1146,7 +1139,10 @@ def home():
                 append_images=rgb_pages[1:]
             )
 
-            generated_files[unique_id] = output_pdf
+            shutil.rmtree(
+                temp_folder,
+                ignore_errors=True
+            )
 
             download_button = f'''
 
@@ -1183,18 +1179,25 @@ def home():
 # =========================================================
 
 @app.route("/download/<file_id>")
-
 def download(file_id):
 
     file_path = generated_files.get(file_id)
 
     if not file_path:
-
         return "File not found."
 
     if not os.path.exists(file_path):
-
         return "PDF missing."
+
+    @after_this_request
+    def cleanup(response):
+        try:
+            os.remove(file_path)
+            generated_files.pop(file_id, None)
+        except Exception as e:
+            print(e)
+
+        return response
 
     return send_file(
         file_path,
@@ -1202,7 +1205,7 @@ def download(file_id):
     )
 
 # =========================================================
-# RUN
+# RUN generated_files[unique_id] = output_pdf
 # =========================================================
 
 if __name__ == "__main__":
